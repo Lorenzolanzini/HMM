@@ -1,0 +1,87 @@
+import numpy as np
+from abc import ABC, abstractmethod
+
+class EmissionModel(ABC):
+
+    def __init__(self, N_hidden, data_obs):
+
+        self.N_hidden = N_hidden
+        self.data_obs = data_obs
+
+
+    @abstractmethod
+    def emission_probability(self):
+      pass
+
+    @abstractmethod
+    def update_emission(self, gamma, c):
+      pass
+
+
+class Discrete_Emission(EmissionModel):
+   
+    def __init__(self, N_hidden, data_obs, N_obs, B):
+
+        super().__init__(N_hidden, data_obs)
+        
+        self.N_obs = N_obs
+        
+        if B is not None:
+            
+            self.B = B
+        
+        else:
+            
+            B_rand = np.random.rand(N_hidden, N_obs) 
+            self.B = B_rand / B_rand.sum(axis=1, keepdims=True)   # normalize each row
+        
+
+
+    
+    def emission_probability(self):
+        
+        Bt = self.B[:, self.data_obs]  # shape: (D, N_seq, T)
+        Bt = Bt.transpose(1, 2, 0)  # shape: (N_seq, T, D)
+        
+        return Bt
+
+    def update_emission(self, gamma, c):
+
+        for k in range(self.N_obs):
+            
+            temp_idx = self.data_obs[:, :] == k
+            
+            self.B[:, k] = (np.ndarray.flatten(((gamma[:, :, :]/c[:, :, np.newaxis])*temp_idx[:, :, np.newaxis]).sum(axis=(0, 1), keepdims=True).T/ (gamma[:, :, :]/c[:, :, np.newaxis]).sum(axis=(0, 1), keepdims=True).T))
+        
+        
+   
+class Gaussian_Emission(EmissionModel):
+   
+    def __init__(self, N_hidden, data_obs, gauss_params=None):
+
+        super().__init__(N_hidden, data_obs)
+        
+        self.gauss_params = np.zeros((N_hidden, 2))
+        if gauss_params is None:
+            self.gauss_params[:, 0] = np.random.rand(N_hidden)       # mu casuali
+            self.gauss_params[:, 1] = abs(np.random.rand(N_hidden)) + 0.5 # sigma > 0
+
+        else:
+            self.gauss_params = gauss_params
+
+    def Gaussian(self, x, mu, sigma):
+
+        return np.exp(-(x-mu)**2/(2*sigma**2))/np.sqrt(2*np.pi*sigma**2)
+    
+    def emission_probability(self):
+        
+        Bt = self.Gaussian(self.data_obs[:, :, np.newaxis], self.gauss_params[np.newaxis, np.newaxis, :, 0], self.gauss_params[np.newaxis, np.newaxis, :, 1])
+        
+        return Bt
+
+    def update_emission(self, gamma, c):
+         
+        self.gauss_params[:, 0] = (gamma[:, :, :] * self.data_obs[:, :, np.newaxis]/c[:, :, np.newaxis]).sum(axis=(0,1)) / (gamma[:, :, :]/c[:, :, np.newaxis]).sum(axis=(0,1))
+        self.gauss_params[:, 1] = np.sqrt((gamma[:, :, :] * self.data_obs[:, :, np.newaxis]**2 /c[:, :, np.newaxis]).sum(axis=(0,1)) / (gamma[:, :, :]/c[:, :, np.newaxis]).sum(axis=(0,1)) - self.gauss_params[:, 0]**2)  
+
+
