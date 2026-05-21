@@ -1,5 +1,6 @@
 import numpy as np
 from abc import ABC, abstractmethod
+from scipy.special import gamma
 
 class EmissionModel(ABC):
 
@@ -83,5 +84,36 @@ class Gaussian_Emission(EmissionModel):
          
         self.gauss_params[:, 0] = (gamma[:, :, :] * self.data_obs[:, :, np.newaxis]/c[:, :, np.newaxis]).sum(axis=(0,1)) / (gamma[:, :, :]/c[:, :, np.newaxis]).sum(axis=(0,1))
         self.gauss_params[:, 1] = np.sqrt((gamma[:, :, :] * self.data_obs[:, :, np.newaxis]**2 /c[:, :, np.newaxis]).sum(axis=(0,1)) / (gamma[:, :, :]/c[:, :, np.newaxis]).sum(axis=(0,1)) - self.gauss_params[:, 0]**2)  
+
+
+class Student_Emission(EmissionModel):
+   
+    def __init__(self, N_hidden, data_obs, student_params=None):
+
+        super().__init__(N_hidden, data_obs)
+        
+        self.student_params = np.zeros((N_hidden, 3))
+        if student_params is None:
+            self.student_params[:, 0] = np.random.rand(N_hidden)       # mu casuali
+            self.student_params[:, 1] = abs(np.random.rand(N_hidden)) + 0.5 # sigma > 0
+            self.student_params[:, 2] = abs(np.random.rand(N_hidden)) + 1  # sigma > 0
+        else:
+            self.student_params = student_params
+
+    def Student(self, x, mu, sigma, n):
+
+        return (gamma((n+1)/2) / (gamma(n/2)*np.sqrt(n*np.pi)*sigma)) * (1+(1/n)*((x-mu)/sigma)**2)**(-(n+1)/2)
+    
+    def emission_probability(self):
+        
+        Bt = self.Gaussian(self.data_obs[:, :, np.newaxis], self.gauss_params[np.newaxis, np.newaxis, :, 0], self.gauss_params[np.newaxis, np.newaxis, :, 1])
+        
+        return Bt
+
+    def update_emission(self, gamma, c):
+         
+        self.gauss_params[:, 0] = (gamma[:, :, :] * self.data_obs[:, :, np.newaxis]/c[:, :, np.newaxis]).sum(axis=(0,1)) / (gamma[:, :, :]/c[:, :, np.newaxis]).sum(axis=(0,1))
+        self.gauss_params[:, 1] = np.sqrt((gamma[:, :, :] * self.data_obs[:, :, np.newaxis]**2 /c[:, :, np.newaxis]).sum(axis=(0,1)) / (gamma[:, :, :]/c[:, :, np.newaxis]).sum(axis=(0,1)) - self.gauss_params[:, 0]**2)  
+
 
 
