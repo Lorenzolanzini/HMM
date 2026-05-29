@@ -139,17 +139,21 @@ class Hmm:
             self.A = A_prime
             self.pi = pi_prime.reshape((-1))
 
-            err_list.append(self.prob_log(c))
+            err_list.append(self.compute_likelihood(data_obs, c))
   
             step +=1
         
         return err_list
 
-    def compute_likelihood(self, obs_seq):
+    def compute_likelihood(self, obs_seq, c = None):
 
-        _, c = self.forward_coeff(self.data_obs)
-
-        return 1/c[:, -1]
+        if c is None:
+            
+            _, c = self.forward_coeff(obs_seq)
+        
+        log_likelihood = -np.sum(np.log(c), axis=1) / c.shape[1]
+        
+        return log_likelihood
 
     def Viterbi(self, data_obs):
 
