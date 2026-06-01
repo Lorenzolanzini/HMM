@@ -1,6 +1,8 @@
 import numpy as np
 from abc import ABC, abstractmethod
-from scipy.special import gamma
+from scipy.special import gamma as Gamma
+from scipy.special import digamma
+from scipy.optimize import brentq
 
 class EmissionModel(ABC):
 
@@ -95,25 +97,54 @@ class Student_Emission(EmissionModel):
         self.student_params = np.zeros((N_hidden, 3))
         if student_params is None:
             self.student_params[:, 0] = np.random.rand(N_hidden)       # mu casuali
-            self.student_params[:, 1] = abs(np.random.rand(N_hidden)) + 0.5 # sigma > 0
-            self.student_params[:, 2] = abs(np.random.rand(N_hidden)) + 1  # sigma > 0
+            self.student_params[:, 1] = abs(np.random.rand(N_hidden)) + 1 # sigma > 0
+            self.student_params[:, 2] = abs(np.random.rand(N_hidden)) + 3
         else:
             self.student_params = student_params
 
     def Student(self, x, mu, sigma, n):
 
-        return (gamma((n+1)/2) / (gamma(n/2)*np.sqrt(n*np.pi)*sigma)) * (1+(1/n)*((x-mu)/sigma)**2)**(-(n+1)/2)
+        return (Gamma((n+1)/2) / (Gamma(n/2)*np.sqrt(n*np.pi)*sigma)) * (1+(1/n)*((x-mu)/sigma)**2)**(-(n+1)/2)
     
+    def MLE_student(self, x, mu, sigma, n):
+        z2 = ((x - mu) / sigma) ** 2
+        return (0.5*digamma((n+1)/2) - 0.5*digamma(n/2)
+                - 1/(2*n)
+                - 0.5*np.log(1 + z2/n)
+                + z2 * (n+1) * (1 + z2/n)**(-1) / (2 * n**2))
+    
+    def sum_MLE(self, n_guess, i, gamma, c):
+        scores = self.MLE_student(
+            self.data_obs[:, :],        # raw data, not weighted!
+            self.student_params[i, 0],
+            self.student_params[i, 1],
+            n_guess)
+        weights = gamma[:, :, i] / c[:, :]   # posterior for state i
+        return np.sum(weights * scores)
+
     def emission_probability(self):
         
-        Bt = self.Gaussian(self.data_obs[:, :, np.newaxis], self.gauss_params[np.newaxis, np.newaxis, :, 0], self.gauss_params[np.newaxis, np.newaxis, :, 1])
+        Bt = self.Student(self.data_obs[:, :, np.newaxis], self.student_params[np.newaxis, np.newaxis, :, 0], self.student_params[np.newaxis, np.newaxis, :, 1], self.student_params[np.newaxis, np.newaxis, :, 2])
         
         return Bt
 
     def update_emission(self, gamma, c):
          
-        self.gauss_params[:, 0] = (gamma[:, :, :] * self.data_obs[:, :, np.newaxis]/c[:, :, np.newaxis]).sum(axis=(0,1)) / (gamma[:, :, :]/c[:, :, np.newaxis]).sum(axis=(0,1))
-        self.gauss_params[:, 1] = np.sqrt((gamma[:, :, :] * self.data_obs[:, :, np.newaxis]**2 /c[:, :, np.newaxis]).sum(axis=(0,1)) / (gamma[:, :, :]/c[:, :, np.newaxis]).sum(axis=(0,1)) - self.gauss_params[:, 0]**2)  
+        self.student_params[:, 0] = (gamma[:, :, :] * self.data_obs[:, :, np.newaxis]/c[:, :, np.newaxis]).sum(axis=(0,1)) / (gamma[:, :, :]/c[:, :, np.newaxis]).sum(axis=(0,1))
+        self.student_params[:, 1] = np.sqrt((gamma[:, :, :] * self.data_obs[:, :, np.newaxis]**2 /c[:, :, np.newaxis]).sum(axis=(0,1)) / (gamma[:, :, :]/c[:, :, np.newaxis]).sum(axis=(0,1)) - self.student_params[:, 0]**2)  
+        
+        self.update_nu(gamma, c)
 
+    def update_nu(self,gamma, c, nmin = 3, nmax = 10000):
+
+        for i in range(self.N_hidden):
+            
+            #print(f"state {i}: f(nmin)={self.sum_MLE(nmin, i, gamma, c):.4f}, f(nmax)={self.sum_MLE(nmax, i, gamma, c):.4f}")
+            #self.student_params[i, 2] = brentq(lambda n_guess: self.sum_MLE(n_guess, i, gamma, c), nmin , nmax)
+        
+            try:
+                self.student_params[i, 2] = brentq(lambda n_guess: self.sum_MLE(n_guess, i, gamma, c), nmin, nmax)
+            except ValueError:
+                self.student_params[i, 2] = nmax  # cap at nmax, effectively Gaussian
 
 
