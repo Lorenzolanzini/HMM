@@ -147,12 +147,12 @@ class Student_Emission(EmissionModel):
            
     '''
    
-    def __init__(self, N_hidden, data_obs, student_params=None, count_max = 10, tol_maximization=1e-2, nu_count=1):
+    def __init__(self, N_hidden, data_obs, student_params=None, count_max = 12, tol_maximization=1e-2, nu_count=3, alpha=0.7):
 
         '''
             count_max : maximum number of inner iterations in the maximization step to find mu, nu and sigma. Default to 10
             tol_maximization: convergence tolerance in parameters for the inner iterations
-            nu_count : number of iterations for nu without updating mu and sigma
+            nu_count : update nu every nu_count iteration
             converged : (bool) indicates whether parameters update in the inner EM algorithm converged
         '''
         super().__init__(N_hidden, data_obs)
@@ -161,8 +161,9 @@ class Student_Emission(EmissionModel):
         self.count_max = count_max
         self.tol_maximization = tol_maximization
         self.nu_count = nu_count
+        
         self.converged = False
-
+        self.alpha = alpha #mixing parameter
         if student_params is None:
             self.params[:, 0] = np.random.rand(N_hidden)       # mu casuali
             self.params[:, 1] = abs(np.random.rand(N_hidden)) + 1 # sigma > 0
@@ -222,6 +223,7 @@ class Student_Emission(EmissionModel):
         count = 0
         
         while True:
+            
             weights = self.compute_weights(gamma, c)  # fixed for entire M-step    
             mu_old = self.params[:, 0].copy()
             sigma_old = self.params[:, 1].copy()
@@ -230,21 +232,27 @@ class Student_Emission(EmissionModel):
             self.params[:, 0] = (np.sum(weights * self.data_obs[:, :, np.newaxis], axis=(0,1))
                                 / np.sum(weights, axis=(0,1)))
 
+            weights = self.compute_weights(gamma, c)
+        
             self.params[:, 1] = np.sqrt(
-                np.sum(weights * (self.data_obs[:, :, np.newaxis] - self.params[np.newaxis, np.newaxis,:, 0])**2, axis=(0,1))
-                / np.sum(weights, axis=(0,1))
+        
+                np.sum(weights * (self.data_obs[:, :, np.newaxis] - self.params[np.newaxis, np.newaxis,:, 0])**2, axis=(0,1)) / np.sum(weights, axis=(0,1))
+        
             )
-            #self.params[:, 1] = np.maximum(self.params[:, 1], 1e-6)
+        
+            
+            if count % self.nu_count == 0:
                 
-            for i in range(self.N_hidden):
-                self.params[i, 2] = self.safe_solve_nu(self.params[i, 0], self.params[i, 1], i, gamma, c)
+                for i in range(self.N_hidden):
+                
+                    self.params[i, 2] = self.alpha*self.safe_solve_nu(self.params[i, 0], self.params[i, 1], i, gamma, c) + (1-self.alpha)*nu_old[i]
                 
 
              # --- convergence: max relative change across all params and states ---
             delta_mu    = np.max(np.abs(self.params[:, 0] - mu_old)    / (np.abs(mu_old)    + 1e-8))
             delta_sigma = np.max(np.abs(self.params[:, 1] - sigma_old) / (np.abs(sigma_old) + 1e-8))
             
-            delta_nu = np.max(np.exp(-nu_old / 20) * np.abs(self.params[:, 2] - nu_old) / (np.abs(nu_old) + 1e-8)) # empirical value of 20: above 20 we consider the student distribution equivalent to the Gaussian   
+            delta_nu = np.max(np.exp(-nu_old / 30) * np.abs(self.params[:, 2] - nu_old) / (np.abs(nu_old) + 1e-8)) # empirical value of 20: above 20 we consider the student distribution equivalent to the Gaussian   
 
             count+=1
 
@@ -258,6 +266,7 @@ class Student_Emission(EmissionModel):
                 break
 
             elif count>self.count_max:
+                
                 self.converged = False
                 '''
                 print('#####################################################################################################################################')  
@@ -278,7 +287,7 @@ class Student_Emission(EmissionModel):
         # Define the objective function for the root finder
         f = lambda nu: self.sum_MLE(mu, sigma, nu, i, gamma, c)
         
-        a, b = 3.001, 600.0
+        a, b = 3.001, 50.0
         fa, fb = f(a), f(b)
         
         # Check if signs are the same at boundaries
@@ -291,7 +300,9 @@ class Student_Emission(EmissionModel):
             else:
                 return a
                 
-        return brentq(f, a, b)
+        return brentq(f, a, b, xtol=1e-12)
+    
+
 
 
 

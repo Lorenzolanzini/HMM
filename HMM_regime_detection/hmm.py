@@ -6,7 +6,7 @@ import scipy as sp
 
 class Hmm:
     
-    def __init__(self, N_hidden, emission_model, pi=None, A=None):
+    def __init__(self, N_hidden, emission_model, pi=None, A=None, eps=1e-5):
         
         '''
             Initialization of the discrete hidden state Markov Model. Parameters:
@@ -21,7 +21,7 @@ class Hmm:
         self.N_hidden = N_hidden
         self.Bt = None  ## Emission probabilities of data. Depends on emission_model params
         self.emission = emission_model
-        
+        self.eps = eps #tolerance for HMM EM algorithm
         if A is not None:
 
             self.A = A
@@ -145,7 +145,7 @@ class Hmm:
 
         return A_prime, pi_prime, c, likelihood
 
-    def Baum_Welch(self, data_obs, N_max=100, eps=1e-5):
+    def Baum_Welch(self, data_obs, N_max=100):
 
         '''  
           
@@ -159,14 +159,14 @@ class Hmm:
 
         step = 0
         
-        print('############################################################################################################')
+        print('############################################################################################################################################################################')
         print('Start learning: Baum-Welch expectation - maximization algorithm ')
         
         err_list = []
         err_diff = 1
         
         
-        while step <= N_max and err_diff > eps:
+        while step <= N_max and abs(err_diff) > self.eps:
             
             self.Bt = self.emission.emission_probability()  # return (N_seq, T, N_hidden)
             A_prime, pi_prime, _,likelihood = self.e_m_algorithm(data_obs)  
@@ -176,15 +176,15 @@ class Hmm:
 
             err_list.append(-likelihood)
             
-            if step >= 2:
-                err_diff = abs((err_list[-1] - err_list[-2])/err_list[-2])
+            if step >= 1:
+                err_diff = ((err_list[-1] - err_list[-2])/err_list[-2])
             
             step +=1
             
-            print('Iteration #' + str(step) + '------------ -logL = ' + str(err_list[-1]) + r'------------ $|\Delta$| = ' + str(err_diff*100)+'%')
+            print(f"Iteration {step:>4d}  |  -logL = {float(err_list[-1]):>14.6f}  |  -ΔL/L = {float(err_diff)*100:.6f}%")
         
         print('Learning Finished')
-        print('###############################################################################################################')
+        print('############################################################################################################################################################################')
 
         return err_list
 
