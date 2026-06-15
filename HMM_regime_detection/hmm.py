@@ -22,6 +22,7 @@ class Hmm:
         self.Bt = None  ## Emission probabilities of data. Depends on emission_model params
         self.emission = emission_model
         self.eps = eps #tolerance for HMM EM algorithm
+        
         if A is not None:
 
             self.A = A
@@ -168,6 +169,7 @@ class Hmm:
         
         while step <= N_max and abs(err_diff) > self.eps:
             
+
             self.Bt = self.emission.emission_probability()  # return (N_seq, T, N_hidden)
             A_prime, pi_prime, _,likelihood = self.e_m_algorithm(data_obs)  
 

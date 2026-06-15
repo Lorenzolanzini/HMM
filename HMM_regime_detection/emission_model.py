@@ -94,7 +94,7 @@ class Gaussian_Emission(EmissionModel):
            
     '''
    
-    def __init__(self, N_hidden, data_obs, gauss_params=None):
+    def __init__(self, N_hidden, data_obs, params=None):
 
 
         '''
@@ -107,13 +107,13 @@ class Gaussian_Emission(EmissionModel):
 
         super().__init__(N_hidden, data_obs)
         
-        self.gauss_params = np.zeros((N_hidden, 2))
-        if gauss_params is None:
-            self.gauss_params[:, 0] = np.random.rand(N_hidden)       # mu casuali
-            self.gauss_params[:, 1] = abs(np.random.rand(N_hidden)) + 0.5 # sigma > 0
+        self.params = np.zeros((N_hidden, 2))
+        if params is None:
+            self.params[:, 0] = np.random.rand(N_hidden)       # mu casuali
+            self.params[:, 1] = abs(np.random.rand(N_hidden)) + 0.5 # sigma > 0
 
         else:
-            self.gauss_params = gauss_params
+            self.params = params
 
     def Gaussian(self, x, mu, sigma):
 
@@ -121,7 +121,7 @@ class Gaussian_Emission(EmissionModel):
     
     def emission_probability(self):
         
-        Bt = self.Gaussian(self.data_obs[:, :, np.newaxis], self.gauss_params[np.newaxis, np.newaxis, :, 0], self.gauss_params[np.newaxis, np.newaxis, :, 1])
+        Bt = self.Gaussian(self.data_obs[:, :, np.newaxis], self.params[np.newaxis, np.newaxis, :, 0], self.params[np.newaxis, np.newaxis, :, 1])
         
         return Bt
 
@@ -132,8 +132,8 @@ class Gaussian_Emission(EmissionModel):
 
         '''
          
-        self.gauss_params[:, 0] = (gamma[:, :, :] * self.data_obs[:, :, np.newaxis]/c[:, :, np.newaxis]).sum(axis=(0,1)) / (gamma[:, :, :]/c[:, :, np.newaxis]).sum(axis=(0,1))
-        self.gauss_params[:, 1] = np.sqrt((gamma[:, :, :] * self.data_obs[:, :, np.newaxis]**2 /c[:, :, np.newaxis]).sum(axis=(0,1)) / (gamma[:, :, :]/c[:, :, np.newaxis]).sum(axis=(0,1)) - self.gauss_params[:, 0]**2)  
+        self.params[:, 0] = (gamma[:, :, :] * self.data_obs[:, :, np.newaxis]/c[:, :, np.newaxis]).sum(axis=(0,1)) / (gamma[:, :, :]/c[:, :, np.newaxis]).sum(axis=(0,1))
+        self.params[:, 1] = np.sqrt((gamma[:, :, :] * self.data_obs[:, :, np.newaxis]**2 /c[:, :, np.newaxis]).sum(axis=(0,1)) / (gamma[:, :, :]/c[:, :, np.newaxis]).sum(axis=(0,1)) - self.params[:, 0]**2)  
 
 
 class Student_Emission(EmissionModel):
@@ -147,7 +147,7 @@ class Student_Emission(EmissionModel):
            
     '''
    
-    def __init__(self, N_hidden, data_obs, student_params=None, count_max = 12, tol_maximization=1e-2, nu_count=3, alpha=0.7):
+    def __init__(self, N_hidden, data_obs, student_params=None, count_max = 15, tol_maximization=1e-5, nu_start=3, alpha=1):
 
         '''
             count_max : maximum number of inner iterations in the maximization step to find mu, nu and sigma. Default to 10
@@ -160,7 +160,8 @@ class Student_Emission(EmissionModel):
         self.params = np.zeros((N_hidden, 3))
         self.count_max = count_max
         self.tol_maximization = tol_maximization
-        self.nu_count = nu_count
+        self.nu_start = nu_start
+        self.param_list_learning = []
         
         self.converged = False
         self.alpha = alpha #mixing parameter
@@ -241,12 +242,13 @@ class Student_Emission(EmissionModel):
             )
         
             
-            if count % self.nu_count == 0:
+            if count > self.nu_start:
                 
                 for i in range(self.N_hidden):
                 
                     self.params[i, 2] = self.alpha*self.safe_solve_nu(self.params[i, 0], self.params[i, 1], i, gamma, c) + (1-self.alpha)*nu_old[i]
-                
+            
+            
 
              # --- convergence: max relative change across all params and states ---
             delta_mu    = np.max(np.abs(self.params[:, 0] - mu_old)    / (np.abs(mu_old)    + 1e-8))
@@ -274,6 +276,7 @@ class Student_Emission(EmissionModel):
                 '''
                 break
             
+        self.param_list_learning.append(self.params.copy())
 
     def compute_weights(self, gamma, c):
 
