@@ -6,7 +6,7 @@ import scipy as sp
 
 class Hmm:
     
-    def __init__(self, N_hidden, emission_model, pi=None, A=None, eps=1e-5):
+    def __init__(self, N_hidden, emission_model, pi=None, A=None, eps=1e-7):
         
         '''
             Initialization of the discrete hidden state Markov Model. Parameters:
@@ -146,7 +146,7 @@ class Hmm:
 
         return A_prime, pi_prime, c, likelihood
 
-    def Baum_Welch(self, data_obs, N_max=100):
+    def Baum_Welch(self, data_obs, data_test= None, N_max=100):
 
         '''  
           
@@ -172,7 +172,7 @@ class Hmm:
 
             self.Bt = self.emission.emission_probability()  # return (N_seq, T, N_hidden)
             A_prime, pi_prime, _,likelihood = self.e_m_algorithm(data_obs)  
-
+            
             self.A = A_prime
             self.pi = pi_prime.reshape((-1))
 
@@ -183,7 +183,15 @@ class Hmm:
             
             step +=1
             
-            print(f"Iteration {step:>4d}  |  -logL = {float(err_list[-1]):>14.6f}  |  -ΔL/L = {float(err_diff)*100:.6f}%")
+            if data_test is not None:
+
+                
+                likelihood_test = self.compute_likelihood(data_test)
+                print(f"Iteration {step:>4d}  |  -logL = {float(err_list[-1]):>14.6f}  |  -ΔL/L = {float(err_diff)*100:.6f}% |  -logL_test = {float(likelihood_test):.6f}%")
+            
+            else:
+                
+                print(f"Iteration {step:>4d}  |  -logL = {float(err_list[-1]):>14.6f}  |  -ΔL/L = {float(err_diff)*100:.6f}%")
         
         print('Learning Finished')
         print('############################################################################################################################################################################')
@@ -231,6 +239,8 @@ class Hmm:
         self.decoded_probs = v[:, -1, 0]
         
         self.best_seqs = bt[:, :, 0]
+
+        return self.best_seqs
     
 
     def prob_obs(self, c):

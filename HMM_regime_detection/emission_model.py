@@ -147,7 +147,7 @@ class Student_Emission(EmissionModel):
            
     '''
    
-    def __init__(self, N_hidden, data_obs, student_params=None, count_max = 15, tol_maximization=1e-5, nu_start=3, alpha=1):
+    def __init__(self, N_hidden, data_obs, student_params=None, count_max = 25, tol_maximization=1e-5, nu_start=3, alpha=1, params_to_optimize = [True, True, True]):
 
         '''
             count_max : maximum number of inner iterations in the maximization step to find mu, nu and sigma. Default to 10
@@ -162,6 +162,7 @@ class Student_Emission(EmissionModel):
         self.tol_maximization = tol_maximization
         self.nu_start = nu_start
         self.param_list_learning = []
+        self.params_to_optimize =params_to_optimize
         
         self.converged = False
         self.alpha = alpha #mixing parameter
@@ -230,19 +231,21 @@ class Student_Emission(EmissionModel):
             sigma_old = self.params[:, 1].copy()
             nu_old = self.params[:, 2].copy()
 
-            self.params[:, 0] = (np.sum(weights * self.data_obs[:, :, np.newaxis], axis=(0,1))
-                                / np.sum(weights, axis=(0,1)))
+            if self.params_to_optimize[0] == True:
+                self.params[:, 0] = (np.sum(weights * self.data_obs[:, :, np.newaxis], axis=(0,1))
+                                   / np.sum(weights, axis=(0,1)))
 
             weights = self.compute_weights(gamma, c)
+
+            if self.params_to_optimize[1] == True:
+                self.params[:, 1] = np.sqrt(
         
-            self.params[:, 1] = np.sqrt(
+                    np.sum(weights * (self.data_obs[:, :, np.newaxis] - self.params[np.newaxis, np.newaxis,:, 0])**2, axis=(0,1)) / np.sum(weights, axis=(0,1))
         
-                np.sum(weights * (self.data_obs[:, :, np.newaxis] - self.params[np.newaxis, np.newaxis,:, 0])**2, axis=(0,1)) / np.sum(weights, axis=(0,1))
-        
-            )
+                )
         
             
-            if count > self.nu_start:
+            if self.params_to_optimize[2] == True and count > self.nu_start:
                 
                 for i in range(self.N_hidden):
                 
