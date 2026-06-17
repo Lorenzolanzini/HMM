@@ -285,7 +285,7 @@ class Student_Emission(EmissionModel):
 
         weights = np.zeros((self.data_obs.shape[0], self.data_obs.shape[1], self.N_hidden))
 
-        weights[:, :, :] = (gamma[:, :, :]/ c[:, :, np.newaxis]) * (self.params[np.newaxis, np.newaxis, :, 2]+1) / (self.params[np.newaxis, np.newaxis, :, 2] + (self.data_obs[:, :, np.newaxis]-self.params[np.newaxis, np.newaxis, :, 0])**2 / self.params[np.newaxis, np.newaxis, :, 1]**2)
+        weights[:, :, :] = (gamma[:, :, :]/ c[:, :, np.newaxis]) * (self.params[np.newaxis, np.newaxis, :, 2]+1) / (self.params[np.newaxis, np.newaxis, :, 2] + (self.data_obs[:, :, np.newaxis]-self.params[np.newaxis, np.newaxis, :, 0])**2 / (self.params[np.newaxis, np.newaxis, :, 1]**2 +1e-8))
         
         return weights
     

@@ -22,7 +22,8 @@ class Hmm:
         self.Bt = None  ## Emission probabilities of data. Depends on emission_model params
         self.emission = emission_model
         self.eps = eps #tolerance for HMM EM algorithm
-        
+        self.REG = 1e-300 #prevent overflow
+
         if A is not None:
 
             self.A = A
@@ -65,7 +66,7 @@ class Hmm:
         
         alpha_0 = self.pi[np.newaxis, :] * self.Bt[:, 0, :]
         
-        c[:, 0] = 1 / (alpha_0.sum(axis=1)+1e-100)
+        c[:, 0] = 1 / (alpha_0.sum(axis=1)+self.REG)
         
         alpha[:, 0, :] = alpha_0[:, :] * c[:, 0, np.newaxis]
         
@@ -74,7 +75,7 @@ class Hmm:
             
             alpha_t = ((self.A.T @ (alpha[:, t-1, :].T)).T) * (self.Bt[:, t, :])
             
-            c[:, t] = 1 / (alpha_t.sum(axis = 1)+1e-100)
+            c[:, t] = 1 / (alpha_t.sum(axis = 1)+self.REG)
 
             alpha[:, t, :] = alpha_t * c[:, t, np.newaxis]
         
@@ -163,23 +164,23 @@ class Hmm:
         print('############################################################################################################################################################################')
         print('Start learning: Baum-Welch expectation - maximization algorithm ')
         
-        err_list = []
-        err_diff = 1
+        lkl_list = []
+        lkl_diff = 1
         
         
-        while step <= N_max and abs(err_diff) > self.eps:
+        while step <= N_max and abs(lkl_diff) > self.eps:
             
 
-            self.Bt = self.emission.emission_probability()  # return (N_seq, T, N_hidden)
+            self.Bt = np.maximum(self.emission.emission_probability(), self.REG)  # return (N_seq, T, N_hidden)
             A_prime, pi_prime, _,likelihood = self.e_m_algorithm(data_obs)  
             
             self.A = A_prime
             self.pi = pi_prime.reshape((-1))
 
-            err_list.append(-likelihood)
+            lkl_list.append(likelihood)
             
             if step >= 1:
-                err_diff = ((err_list[-1] - err_list[-2])/err_list[-2])
+                lkl_diff = ((lkl_list[-1] - lkl_list[-2])/abs(lkl_list[-2]))
             
             step +=1
             
@@ -187,16 +188,16 @@ class Hmm:
 
                 
                 likelihood_test = self.compute_likelihood(data_test)
-                print(f"Iteration {step:>4d}  |  -logL = {float(err_list[-1]):>14.6f}  |  -ΔL/L = {float(err_diff)*100:.6f}% |  -logL_test = {float(likelihood_test):.6f}%")
+                print(f"Iteration {step:>4d}  |  logL = {float(lkl_list[-1]):>14.6f}  |  ΔL/L = {float(lkl_diff)*100:.6f}% |  logL_test = {float(likelihood_test):.6f}")
             
             else:
                 
-                print(f"Iteration {step:>4d}  |  -logL = {float(err_list[-1]):>14.6f}  |  -ΔL/L = {float(err_diff)*100:.6f}%")
+                print(f"Iteration {step:>4d}  |  logL = {float(lkl_list[-1]):>14.6f}  |  ΔL/L = {float(lkl_diff)*100:.6f}%")
         
         print('Learning Finished')
         print('############################################################################################################################################################################')
 
-        return err_list
+        return lkl_list
 
     def compute_likelihood(self, obs_seq, c = None):
 
@@ -224,7 +225,7 @@ class Hmm:
 
         v = np.zeros((data_obs.shape[0], data_obs.shape[1], self.N_hidden))
         bt = np.zeros((data_obs.shape[0], data_obs.shape[1], self.N_hidden))
-        self.Bt = self.emission.emission_probability()  # return (N_seq, T, N_hidden)
+        self.Bt = np.maximum(self.emission.emission_probability(), self.REG)  # return (N_seq, T, N_hidden)
         v[:, 0, :] = self.pi * self.Bt[:, 0, :]
         bt[:, 0, :] = 0
 
