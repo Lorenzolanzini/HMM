@@ -147,7 +147,7 @@ class Student_Emission(EmissionModel):
            
     '''
    
-    def __init__(self, N_hidden, data_obs, student_params=None, count_max = 25, tol_maximization=1e-5, nu_start=3, alpha=1, params_to_optimize = [True, True, True]):
+    def __init__(self, N_hidden, data_obs, student_params=None, count_max = 35, tol_maximization=1e-3, nu_start=4, alpha=0.8, params_to_optimize = [True, True, True]):
 
         '''
             count_max : maximum number of inner iterations in the maximization step to find mu, nu and sigma. Default to 10
@@ -309,6 +309,83 @@ class Student_Emission(EmissionModel):
         return brentq(f, a, b, xtol=1e-12)
     
 
+class Multi_Gaussian_Emission(EmissionModel):
 
 
+    '''
 
+        Emission model for Multi-Gaussian emissions
+           
+    '''
+   
+    def __init__(self, N_hidden, data_obs, N_gen, params=None):
+
+
+        '''
+
+            Emission model for continuous Multi-Gaussian emissions
+
+                - the emission parameters of each hidden states are the mean and the variance and their wieght
+           
+        '''
+
+        super().__init__(N_hidden, data_obs)
+        self.N_gen = N_gen
+        self.params = np.zeros((N_hidden, N_gen, 3))
+        if params is None:
+            self.params[:, :, 0] = np.random.rand((N_hidden, N_gen))     
+            self.params[:, :, 1] = abs(np.random.rand((N_hidden, N_gen))) 
+            self.params[:, :, 2] = np.random.uniform((N_hidden, N_gen)) 
+            self.params[:, :, 2] = self.params[:, :, 2] / np.sum(self.params[:, :, 2], axis = 1)
+        else:
+            self.params = params
+        
+
+    def Gaussian(self, x, mu, sigma):
+
+        return np.exp(-(x-mu)**2/(2*sigma**2))/np.sqrt(2*np.pi*sigma**2)
+    
+    def emission_probability(self):
+        
+        Bt = (self.params[np.newaxis, np.newaxis, :, :, 2] * self.Gaussian(self.data_obs[:, :, np.newaxis, np.newaxis], self.params[np.newaxis, np.newaxis,:, :, 0], self.params[np.newaxis, np.newaxis, :, :, 1])).sum(axis = 3)
+        
+        return Bt
+    
+    def process_emission_probability(self, m=None):
+        
+        if m is not None:
+        
+            Bt = (self.params[np.newaxis, np.newaxis, :, m, 2] * self.Gaussian(self.data_obs[:, :, np.newaxis, np.newaxis], self.params[np.newaxis, np.newaxis, :, m, 0], self.params[np.newaxis, np.newaxis, :, m, 1]))
+        
+        else:
+
+            Bt = (self.params[np.newaxis, np.newaxis, :, :, 2] * self.Gaussian(self.data_obs[:, :, np.newaxis, np.newaxis], self.params[np.newaxis, np.newaxis, :, :, 0], self.params[np.newaxis, np.newaxis, :, :, 1]))
+        
+        
+        return Bt
+
+    def update_emission(self, gamma, c):
+
+        # E-step: compute and freeze component posteriors
+        # P(m|k,x_t) shape: (S, T, K, M)
+        count = 0
+        while count < 5:
+            
+            comp_post = self.process_emission_probability() / self.emission_probability()[:, :, :, np.newaxis]
+
+            # gamma_t(k,m) = gamma_t(k) * P(m|k,x_t)
+            gamma_km = gamma[:, :, :, np.newaxis] * comp_post  # (S, T, K, M)
+
+            denom = gamma_km.sum(axis=(0, 1))  # (K, M)
+
+            # M-step: weights
+            self.params[:, :, 2] = denom / gamma.sum(axis=(0, 1))[:, np.newaxis]
+
+            # M-step: means
+            self.params[:, :, 0] = (gamma_km * self.data_obs[:, :, np.newaxis, np.newaxis]).sum(axis=(0, 1)) / denom
+
+            # M-step: std devs
+            residuals = self.data_obs[:, :, np.newaxis, np.newaxis] - self.params[np.newaxis, np.newaxis, :, :, 0]
+            self.params[:, :, 1] = np.sqrt((gamma_km * residuals**2).sum(axis=(0, 1)) / denom)
+
+            count += 1
